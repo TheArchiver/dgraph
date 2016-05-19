@@ -62,7 +62,7 @@ type List struct {
 	clog        *commit.Logger
 	lastCompact time.Time
 	wg          sync.WaitGroup
-	deleteMe    bool
+	deleteMe    bool // atomic
 
 	// Mutations
 	mlayer        map[int]types.Posting // stores only replace instructions.
@@ -580,16 +580,36 @@ func (l *List) SetForDeletion() {
 // BenchmarkAddMutations_SyncEvery1000LogEntry-6	   30000	     63544 ns/op
 // ok  	github.com/dgraph-io/dgraph/posting	10.291s
 func (l *List) AddMutation(t x.DirectedEdge, op byte) error {
-	l.wg.Wait()
-	l.Lock()
-	defer l.Unlock()
-	if l.deleteMe {
+	l.wg.Wait()     // initialization wait. So, do this first.
+	if l.deleteMe { // atomic. So don't acquire mutex lock.
 		return E_TMP_ERROR
 	}
 
-	if t.Timestamp.UnixNano() < l.maxMutationTs {
-		return fmt.Errorf("Mutation ts lower than committed ts.")
+	if !bytes.Equal(t.Value, nil) {
+		t.ValueId = math.MaxUint64
 	}
+	if t.ValueId == 0 {
+		return fmt.Errorf("ValueId cannot be zero.")
+	}
+	// ts, err := l.clog.AddLog(hash, value)
+	if err != nil {
+		return err
+	}
+	// valid ts
+
+	l.Lock()
+	defer l.Unlock()
+
+	/*
+		// for
+		if t.Timestamp.UnixNano() < l.maxMutationTs {
+			// sleep
+			return fmt.Errorf("Mutation ts lower than committed ts.")
+		}
+	*/
+	// generate a unique, increased ts.
+	// clog.AddLog(ts, ...)
+	// ts, err := clog.AddLog(l.hash, mbuf)
 
 	// Mutation arrives:
 	// - Check if we had any(SET/DEL) before this, stored in the mutation list.
@@ -600,12 +620,6 @@ func (l *List) AddMutation(t x.DirectedEdge, op byte) error {
 
 	// All edges with a value set, have the same uid. In other words,
 	// an (entity, attribute) can only have one value.
-	if !bytes.Equal(t.Value, nil) {
-		t.ValueId = math.MaxUint64
-	}
-	if t.ValueId == 0 {
-		return fmt.Errorf("ValueId cannot be zero.")
-	}
 
 	mbuf := newPosting(t, op)
 	uo := flatbuffers.GetUOffsetT(mbuf)

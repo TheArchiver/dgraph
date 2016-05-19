@@ -1,6 +1,6 @@
 # Dockerfile for DGraph
 
-FROM golang:1.6.2
+FROM golang:1.6.2-alpine
 MAINTAINER Manish Jain <manishrjain@gmail.com>
 
 # Get the necessary packages.

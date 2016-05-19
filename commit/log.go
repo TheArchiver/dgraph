@@ -449,24 +449,10 @@ func setError(prev *error, n error) {
 }
 
 func (l *Logger) AddLog(ts int64, hash uint32, value []byte) error {
-	if ts < atomic.LoadInt64(&l.lastLogTs) {
-		return fmt.Errorf("Timestamp lower than last log timestamp.")
-	}
-
 	buf := new(bytes.Buffer)
-	var err error
-	setError(&err, binary.Write(buf, binary.LittleEndian, ts))
-	setError(&err, binary.Write(buf, binary.LittleEndian, hash))
-	setError(&err, binary.Write(buf, binary.LittleEndian, int32(len(value))))
-	_, nerr := buf.Write(value)
-	setError(&err, nerr)
-	if err != nil {
-		return err
-	}
-	glog.WithField("bytes", buf.Len()).WithField("ts", ts).
-		Debug("Log entry buffer.")
 
-	if l.curFile().Size()+int64(buf.Len()) > l.maxSize {
+	l := int32(len(value)) + 4 + 8
+	if l.curFile().Size()+l > l.maxSize {
 		if err = l.rotateCurrent(); err != nil {
 			glog.WithError(err).Error("While rotating current file out.")
 			return err
@@ -480,6 +466,19 @@ func (l *Logger) AddLog(ts int64, hash uint32, value []byte) error {
 
 	cf.Lock()
 	defer cf.Unlock()
+	// get the timestamp, > last committed.
+	var err error
+	setError(&err, binary.Write(buf, binary.LittleEndian, ts))
+	setError(&err, binary.Write(buf, binary.LittleEndian, hash))
+	setError(&err, binary.Write(buf, binary.LittleEndian, int32(len(value))))
+	_, nerr := buf.Write(value)
+	setError(&err, nerr)
+	if err != nil {
+		return err
+	}
+	glog.WithField("bytes", buf.Len()).WithField("ts", ts).
+		Debug("Log entry buffer.")
+
 	if _, err = cf.f.Write(buf.Bytes()); err != nil {
 		glog.WithError(err).Error("While writing to current file.")
 		return err
@@ -497,6 +496,7 @@ func (l *Logger) AddLog(ts int64, hash uint32, value []byte) error {
 		return cf.f.Sync()
 	}
 	return nil
+	// return ts, error
 }
 
 // streamEntries allows for hash to be zero.
