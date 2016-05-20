@@ -429,14 +429,38 @@ func TestToPB(t *testing.T) {
 	}
 }
 
+func checkSubGraph(b *testing.B, sg SubGraph) {
+	uo := flatbuffers.GetUOffsetT(sg.Query)
+	q := new(task.Query)
+	q.Init(sg.Query, uo)
+	for i := 0; i < q.UidsLength(); i++ {
+		fmt.Printf("Attr: %v Uid: %0x\n", sg.Attr, q.Uids(i))
+	}
+	fmt.Println()
+	fmt.Println()
+	fmt.Println()
+
+	m := make(map[string]bool)
+	for _, ch := range sg.Children {
+		if _, present := m[ch.Attr]; present {
+			b.Fatalf("Attr: %v already present", ch.Attr)
+		}
+		m[ch.Attr] = true
+		checkSubGraph(b, *ch)
+	}
+	if len(m) > 0 {
+		fmt.Printf("Map: %v\n", m)
+	}
+}
+
 func benchmarkToJson(file string, b *testing.B) {
 	b.ReportAllocs()
 	var sg SubGraph
 	var l Latency
-
 	f, err := ioutil.ReadFile(file)
 	if err != nil {
 		b.Error(err)
+		b.Fail()
 	}
 
 	buf := bytes.NewBuffer(f)
@@ -444,10 +468,13 @@ func benchmarkToJson(file string, b *testing.B) {
 	err = dec.Decode(&sg)
 	if err != nil {
 		b.Error(err)
+		b.Fail()
 	}
+	checkSubGraph(b, sg)
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+
 		if _, err := sg.ToJson(&l); err != nil {
 			b.Fatal(err)
 		}

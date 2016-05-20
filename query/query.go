@@ -137,7 +137,7 @@ func mergeInterfaces(i1 interface{}, i2 interface{}) interface{} {
 	return []interface{}{i1, i2}
 }
 
-func postTraverse(g *SubGraph) (result map[uint64]interface{}, rerr error) {
+func postTraverse(g SubGraph) (result map[uint64]interface{}, rerr error) {
 	if len(g.Query) == 0 {
 		return result, nil
 	}
@@ -147,7 +147,7 @@ func postTraverse(g *SubGraph) (result map[uint64]interface{}, rerr error) {
 	cResult := make(map[uint64]interface{})
 
 	for _, child := range g.Children {
-		m, err := postTraverse(child)
+		m, err := postTraverse(*child)
 		if err != nil {
 			x.Err(glog, err).Error("Error while traversal")
 			return result, err
@@ -215,8 +215,10 @@ func postTraverse(g *SubGraph) (result map[uint64]interface{}, rerr error) {
 
 		if pval, present := result[q.Uids(i)]; present {
 			glog.WithField("prev", pval).
-				WithField("_uid_", q.Uids(i)).
+				WithField("attr", g.Attr).
+				WithField("_uid_", fmt.Sprintf("%0x", q.Uids(i))).
 				WithField("new", val).
+				WithField("newvallen", len(val)).
 				Fatal("Previous value detected.")
 		}
 		m := make(map[string]interface{})
@@ -231,7 +233,7 @@ func postTraverse(g *SubGraph) (result map[uint64]interface{}, rerr error) {
 	return result, nil
 }
 
-func (g *SubGraph) ToJson(l *Latency) (js []byte, rerr error) {
+func (g SubGraph) ToJson(l *Latency) (js []byte, rerr error) {
 	r, err := postTraverse(g)
 	if err != nil {
 		x.Err(glog, err).Error("While doing traversal")
